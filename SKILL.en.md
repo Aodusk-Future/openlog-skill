@@ -17,17 +17,22 @@ OpenLog is a lightweight "per-module development journal" mechanism. It pins eac
 
 ```
 OpenLog/
-├── INDEX.md                          # Module catalogue (minimal table)
+├── INDEX.md                          # Module catalogue + cross-module collaboration rules
+├── CONVENTIONS.md                    # Optional: cross-cutting engineering conventions (asmdef / test templates / naming...)
 ├── <ModuleA>/
-│   ├── ARCHITECTURE.md               # Module architecture (structured, kept current)
+│   ├── ARCHITECTURE.md               # Module architecture (contract-owner declaration)
 │   ├── DEV_LOG.md                    # Dev log (reverse chronological, newest on top)
 │   ├── DEV_LOG.archive/              # Auto-archive (only when DEV_LOG > 500 lines)
 │   │   └── YYYY-MM.md
-│   └── CURRENT.md                    # Current breakpoint (< 30 lines)
+│   └── CURRENT.md                    # Current breakpoint (< 30 lines; includes external-request inbox)
 └── <ModuleB>/...
 ```
 
 `OpenLog/` follows the project's git repository, so teams / multiple worktrees / different agents share the same journal.
+
+**Two conventions split**:
+- **"Cross-module collaboration rules" at the top of INDEX.md** — govern *how modules interact* (contract ownership, request inbox, etc.) — universal meta-rules.
+- **CONVENTIONS.md** — governs *how to actually build inside a single module* (project-specific tech practices: Unity asmdef templates, unit-test layout, naming, etc.). This is an **optional file**, only created when the project needs to record cross-cutting tech conventions.
 
 ---
 
@@ -43,13 +48,29 @@ Execute in order:
   ```markdown
   # OpenLog Module Index
 
+  > Engineering conventions (cross-cutting) see [CONVENTIONS.md](CONVENTIONS.md) (optional; ignore if absent).
+
+  ## Cross-module collaboration rules
+  1. A boundary = a named contract (interface / data shape); depend on the contract, not on the internals.
+  2. The more foundational (depended-upon) module owns the contract — keep it stable, prefer additive changes; downstreams write adapters and only file requests.
+  3. Contracts live in the owner's ARCHITECTURE → Key Interfaces; consumers cite them in their Dependencies. If mismatch is found, record a TODO locally first and discuss with the owner before changing the contract.
+  4. Filing cross-module requests: append to the owner's CURRENT "External Requests (inbox)" (with date + source module), but **never modify the other module's contract/decisions** — contracts only change when the owner triages them into their ARCHITECTURE.
+
   | Module | One-line definition | Status |
   |--------|---------------------|--------|
   ```
 
+  These "Cross-module collaboration rules" are the skill's default meta-rules, universal across projects. **Do not remove them** unless the user explicitly asks for a different collaboration model.
+
 ### Step 2: Read `OpenLog/INDEX.md` (once, in full)
 
-Load the entire module catalogue into context. This is the only "full read" allowed in this phase.
+Load the entire module catalogue + the "Cross-module collaboration rules" at the top into context. This is the only "full read" allowed in this phase.
+
+**Conditional read of CONVENTIONS.md**: if INDEX has a pointer to `CONVENTIONS.md` at the top, AND the current task involves any of the following, **also read CONVENTIONS.md** (full read); otherwise skip:
+- Creating a **foundational / shallow-dependency** sub-module (may need the project's assembly / test template)
+- Touching a **cross-module contract** (interface / data shape / naming)
+- The user explicitly says "per the engineering conventions" or "per project standard"
+- The user asks "what's our project convention for X?"
 
 ### Step 3: Try **fuzzy module-name matching** (preferred over asking)
 
@@ -169,12 +190,28 @@ Use local time (e.g. `date "+%Y-%m-%d %H:%M"`). Keep summary ≤ 60 chars.
 
 **Only** if this task triggered one of:
 
-- Added / removed / renamed a public interface (method, component, event)
+- Added / removed / renamed a public interface (method, component, event) — these go into "Key Interfaces"
 - Added / removed / renamed a module dependency (upstream or downstream)
 - Added / removed / renamed a key file
 - Landed a design decision worth recording ("why we did it this way", 1-3 lines)
 
 **Pure implementation details don't pollute ARCHITECTURE.** This is the key token-saving rule.
+
+**Contract inbox triage**: if during this task the module's CURRENT "External Requests (inbox)" had any newly accepted requests, transcribe them into Key Interfaces (ARCHITECTURE) and delete from inbox; for rejected ones, note the reason and delete; for deferred ones, move into "Known Issues / TODO". **Do not let inbox accumulate.**
+
+#### 3.5. Append a new cross-cutting convention to CONVENTIONS.md (only if you actually distilled a reusable rule)
+
+**Trigger conditions** (must all hold):
+- This task revisited a project-specific practice (asmdef setup / test template / naming rule / directory shape) **back and forth with the user**
+- The practice **will be reused in other modules** (not a one-off for this module)
+- The user **explicitly confirmed** the rule should be recorded ("write this down" / "we'll always do it this way")
+
+When triggered:
+1. If `OpenLog/CONVENTIONS.md` doesn't exist, create it from the file-template section, and prepend a pointer line to `OpenLog/INDEX.md`: `> Engineering conventions (cross-cutting) see [CONVENTIONS.md](CONVENTIONS.md).`
+2. Append a new rule at the bottom of CONVENTIONS.md (next C-number in sequence: C1 / C2 / ...), filling in: when to apply / when not / template / "applied to" list.
+3. In this DEV_LOG entry, link with one line: "(distilled as CONVENTIONS C<N>)".
+
+**Don't proactively try to manufacture this step** — most wrap-ups don't involve cross-cutting conventions and should skip it.
 
 #### 4. Check DEV_LOG archive (only when file is large)
 
@@ -212,13 +249,13 @@ Archiving doesn't need to happen on every wrap-up — checking once every ~10 wr
 ## Purpose
 (2-3 lines: what problem does this module solve, where does it sit in the system)
 
-## Key Interfaces
+## Key Interfaces (this module's contract declaration as owner)
 - `<Interface>.<Method>(...)` — `<path/to/file>:<line>` — one-line responsibility
 - ...
 
 ## Dependencies
-- Upstream: <list of upstream modules>
-- Downstream: <list of downstream modules>
+- Upstream: <list of upstream modules> (consumed via their ARCHITECTURE → Key Interfaces contracts)
+- Downstream: <list of downstream modules> (consume this module's Key Interfaces)
 
 ## File List
 - `<path/to/file>` — one-line responsibility
@@ -227,6 +264,8 @@ Archiving doesn't need to happen on every wrap-up — checking once every ~10 wr
 ## Design Decisions
 (Append as needed, 1-3 lines each. Record "why", not "what".)
 ```
+
+**"Key Interfaces" is the contract-owner declaration**: anything here is open to all downstreams. The owner is responsible for "additive-only" stability; downstreams that want new interfaces should append a request to the owner's CURRENT "External Requests (inbox)" and wait for triage — **never edit this section directly.**
 
 ### DEV_LOG.md
 
@@ -254,9 +293,42 @@ Archiving doesn't need to happen on every wrap-up — checking once every ~10 wr
 1. <next action>
 2. <next action>
 
+## External Requests (inbox)
+- YYYY-MM-DD [<source module>] <request description>
+(Consumers append here; this module as contract owner triages — accepted → moved into ARCHITECTURE Key Interfaces, then deleted; rejected → noted with reason, then deleted; deferred → moved into Known Issues / TODO.)
+
 ## Known Issues / TODO
 - [ ] <to-do>
 ```
+
+### CONVENTIONS.md (optional — create only when the project needs cross-cutting tech rules)
+
+```markdown
+# OpenLog Engineering Conventions (cross-cutting)
+
+> Cross-module **engineering practices** (distinct from INDEX's "Cross-module collaboration rules" — those govern inter-module contracts; these govern how to actually build inside a single module).
+> Consult on demand; no need to read every session. Append new conventions here; INDEX only keeps a one-line pointer.
+
+---
+
+## C1. <Convention name, e.g. "Module asmdef + unit-test template">
+**Established** YYYY-MM-DD, originated in `<first sub-module that landed it>`.
+
+### When to apply
+<Trigger scenarios, 1-3 lines>
+
+### When NOT to apply / defer
+<Counter-examples / high-cost scenarios, 1-3 lines>
+
+### Template / steps / key disciplines
+(Concrete content — may include code / config snippets / commands)
+
+### Applied to
+- `<module path>` — YYYY-MM-DD
+- ...
+```
+
+Each convention gets one H2 with a sequential number (C1 / C2 / ...). **The content of each convention is project-specific** (language / engine / toolchain decided by the project); the template only standardises the shell structure.
 
 ---
 
@@ -264,20 +336,25 @@ Archiving doesn't need to happen on every wrap-up — checking once every ~10 wr
 
 - ❌ **Don't re-read the entire DEV_LOG** to "understand history" — the reverse-chronological first 40 lines is the designed boundary
 - ❌ **Don't dump scratch discussions into ARCHITECTURE** — only commit settled interfaces / dependencies / decisions
-- ❌ **Don't let CURRENT exceed 30 lines** — archive or delete
+- ❌ **Don't let CURRENT exceed 30 lines** — archive or delete (and don't let "External Requests (inbox)" accumulate > 5 unhandled items)
 - ❌ **Don't paste full code diffs into any doc** — use `path/to/file:line` references
 - ❌ **Don't trigger wrap-up unilaterally** — only when the user gives an explicit linguistic signal
 - ❌ **Don't grep the codebase to rebuild module structure** — ARCHITECTURE is the source of truth; if it's stale, update it before acting
 - ❌ **Don't write tech-stack filler into ARCHITECTURE** (Unity / C# / React / etc.) — unless that fact has architectural meaning
+- ❌ **Don't put project-specific tech conventions into SKILL.md itself** (Unity asmdef templates, specific test-framework syntax, private naming rules, etc.) — those belong in the project's `CONVENTIONS.md`; the skill only standardises the shell
+- ❌ **Don't modify another module's contract/decisions** — only append a request to the other module's CURRENT "External Requests (inbox)" and let the contract owner triage
 
 ---
 
 ## Expected token cost per invocation
 
 - Startup + pick up existing module: ~700-1000 tokens (INDEX + full ARCHITECTURE + first 40 lines of DEV_LOG + full CURRENT + summary output)
+- Startup + **conditional CONVENTIONS read**: +200-600 tokens (only when creating a foundational sub-module / touching contracts / user says "per project conventions")
 - Startup + new module: ~300 tokens (INDEX + template fill + one-row index update)
 - Status change: ~100 tokens (just modify one INDEX row)
 - Wrap-up: ~150-400 tokens (DEV_LOG prepend + CURRENT local edit; ARCHITECTURE usually skipped)
+- Wrap-up + inbox triage: +50-150 tokens (per request, just edit/delete)
+- Wrap-up + appending a new CONVENTIONS entry: ~300-500 tokens (rare; requires explicit user confirmation)
 - Archive (rare): ~500 tokens
 
 If you exceed these budgets in practice, stop and check whether you violated a "forbidden behaviour".
