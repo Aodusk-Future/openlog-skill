@@ -21,12 +21,18 @@ OpenLog/
 ├── CONVENTIONS.md                    # Optional: cross-cutting engineering conventions (asmdef / test templates / naming...)
 ├── <ModuleA>/
 │   ├── ARCHITECTURE.md               # Module architecture (contract-owner declaration)
-│   ├── DEV_LOG.md                    # Dev log (reverse chronological, newest on top)
+│   ├── DEV_LOG.md                    # Dev log (reverse chronological, newest on top) — history of completed actions
 │   ├── DEV_LOG.archive/              # Auto-archive (only when DEV_LOG > 500 lines)
 │   │   └── YYYY-MM.md
-│   └── CURRENT.md                    # Current breakpoint (< 30 lines; includes external-request inbox)
+│   ├── CURRENT.md                    # Current breakpoint (< 30 lines; includes external-request inbox) — long-term stage view
+│   └── HANDOFF.md                    # Optional, one-shot: end-of-session "scene snapshot" (incomplete / validation / review needed)
 └── <ModuleB>/...
 ```
+
+**Three info layers, distinct semantics** (don't mix):
+- **DEV_LOG.md** = **history** of completed actions (reverse chronological, accumulates)
+- **CURRENT.md** = the module's **long-term stage** (continuous, cross-session)
+- **HANDOFF.md** = the **scene** where the last session stopped (one-shot; file exists = there's a half-finished work waiting; deleted once picked up)
 
 `OpenLog/` follows the project's git repository, so teams / multiple worktrees / different agents share the same journal.
 
@@ -98,11 +104,14 @@ If the user invoked the skill with no module hint (e.g. plain `/openlog`), skip 
 
 #### Branch A: Pick up an existing module
 
-Read the three files in this **strict order** — **do not parallelise, do not read whole files**:
+Read files in this **strict order** — **do not parallelise, do not read whole files**:
 
-1. `Read OpenLog/<Module>/ARCHITECTURE.md` (full, usually 1-2 KB)
-2. `Read OpenLog/<Module>/DEV_LOG.md`, **first 40 lines only** (use Read's `limit: 40`) — covers the most recent ~5 entries, enough to recover the recent thread
-3. `Read OpenLog/<Module>/CURRENT.md` (full, fixed < 30 lines)
+1. **First check whether `OpenLog/<Module>/HANDOFF.md` exists** (Bash `test -f`)
+   - **Exists** → read it in full (usually < 30 lines). This is the **scene where the last session stopped**, newer than CURRENT, highest priority.
+   - **Doesn't exist** → skip; proceed to standard handoff.
+2. `Read OpenLog/<Module>/ARCHITECTURE.md` (full, usually 1-2 KB)
+3. `Read OpenLog/<Module>/DEV_LOG.md`, **first 40 lines only** (use Read's `limit: 40`) — covers the most recent ~5 entries
+4. `Read OpenLog/<Module>/CURRENT.md` (full, fixed < 30 lines)
 
 **Architecture-drift check** (lightweight, optional):
 
@@ -113,14 +122,22 @@ Read the three files in this **strict order** — **do not parallelise, do not r
 
 - Don't force the update; just hint.
 
-Then output a **2-3 sentence handoff summary**:
+Then output the **handoff summary** (with an extra section when HANDOFF exists):
 
 > **Module purpose**: <one line>
 > **Recent progress**: <synthesised from the 1-2 newest log entries>
 > **Current breakpoint / next step**: <synthesised from CURRENT's "In Progress" + "Next">
 > [⚠️ drift hint, optional]
+>
+> 🔴 **Open handoff** (YYYY-MM-DD, left in HANDOFF.md) — only output this block when the file exists:
+> - Session goal: <verbatim from HANDOFF "Session goal">
+> - Incomplete: N items (<list briefly>)
+> - Needs review: M items (<list briefly>)
+> - Validation: <one-line summary>
+>
+> When you've picked up the handoff, tell me "handoff done" to close it.
 
-Then start executing the user's actual instruction.
+Then start executing the user's instruction. **Note**: if the user immediately continues the handoff items, you already have the context — go. If the user pivots to something else, **don't** silently delete HANDOFF.md — it stays as a reminder until the user explicitly closes it.
 
 #### Branch B: Create a new module
 
@@ -143,6 +160,46 @@ If the user's invocation is a status-change action ("pause module X", "X is done
 2. If becoming ✅ done, optionally rewrite CURRENT.md as a final delivery summary (5-10 lines)
 3. Append a status-change record to the top of DEV_LOG.md
 4. Output confirmation; do not enter development flow.
+
+#### Branch D: Leave a handoff (create / overwrite HANDOFF.md)
+
+**Trigger phrases** (**must** be user-explicit — never proactively suggest this):
+- "leave a handoff" / "write a handoff" / "leave handoff notes"
+- "for the next agent..." / "things to watch out for next time..."
+- User types `/openlog handoff`
+
+Steps:
+1. Use `AskUserQuestion` or a single conversational pass to collect 6 fields (if all info is already in the current conversation, organise it directly — don't re-ask):
+   - **Session goal** (one line)
+   - **Files changed** (list: path + one-line description)
+   - **Key implementation** (decision points, 2-5 items)
+   - **Validation status** (ran / didn't run / known failures)
+   - **Incomplete** (`[ ]` checkbox list)
+   - **Needs review** (flags for the next agent's attention)
+2. Write to `OpenLog/<Module>/HANDOFF.md` using the template in the file-templates section (**overwrites** any existing file — a module has at most one open handoff. If you find one already there that hasn't been closed, warn: "An open HANDOFF exists. Overwriting will lose the previous content. Confirm?")
+3. **Also** run the standard wrap-up flow (DEV_LOG append + CURRENT update) — handoff supplements wrap-up, doesn't replace it
+4. Output confirmation: "Handoff written to HANDOFF.md. Next agent picking up `<Module>` will read it first."
+
+#### Branch E: Close handoff (delete HANDOFF.md + absorb info)
+
+**Trigger phrases**:
+- "handoff done" / "handoff closed" / "scene cleared"
+- "those handoff items are resolved"
+- "delete the handoff"
+- User types `/openlog handoff close`
+
+Steps:
+1. Read `OpenLog/<Module>/HANDOFF.md` (if absent, tell the user "no open handoff for this module" and stop)
+2. **Absorb the key info** — for each item in handoff, decide where it lands:
+   - **Incomplete items now completed** → append to current DEV_LOG entry's "linked" field (or add a new DEV_LOG entry)
+   - **Incomplete items still incomplete** → move into CURRENT's "In Progress" or "Next"
+   - **Review items approved + landing as an interface/contract change** → write into ARCHITECTURE's "Key Interfaces"
+   - **Review items rejected** → write a line in the current DEV_LOG entry: "Review decision: no change, reason: <...>"
+   - **Validation ❌ known failures still unfixed** → write into CURRENT's "Known Issues / TODO"
+3. **Delete HANDOFF.md**
+4. Output confirmation: "Handoff closed; N items absorbed into DEV_LOG / CURRENT / ARCHITECTURE."
+
+**Critical**: step 2 must finish before step 3 — deleting straight away loses info. If you're unsure where something belongs, ask the user instead of guessing.
 
 ---
 
@@ -301,6 +358,45 @@ Archiving doesn't need to happen on every wrap-up — checking once every ~10 wr
 - [ ] <to-do>
 ```
 
+### HANDOFF.md (optional, one-shot — created by branch D, deleted by branch E)
+
+```markdown
+# <Module> Open Handoff
+
+**Left at** YYYY-MM-DD HH:MM
+**Left by**: <optional: agent name / user, for traceability>
+
+## Session goal
+<one line: what this session aimed to achieve>
+
+## Files changed
+- `<path/to/file>` — <one-line description>
+- ...
+
+## Key implementation
+- <decision point 1, 1-2 lines>
+- <decision point 2, 1-2 lines>
+
+## Validation status
+- ✅ Ran: <test name / description> (passed)
+- ⏳ Didn't run: <untested items / Play Mode walk-through / etc.>
+- ❌ Known failures: <describe if any; otherwise "none">
+
+## Incomplete
+- [ ] <unfinished item 1>
+- [ ] <unfinished item 2>
+
+## Needs review
+- <flag for next agent's attention, 1-2 lines>
+- <flag for next agent's attention, 1-2 lines>
+```
+
+**HANDOFF.md discipline**:
+- **One-shot**: a module has at most one open handoff; new writes overwrite the old one (warn first)
+- **Closed on pickup**: branch E deletes the file after absorbing info into DEV_LOG / CURRENT / ARCHITECTURE
+- **Don't accumulate history**: HANDOFF isn't a log; past handoffs are not kept (anything worth keeping should already be absorbed into DEV_LOG at close-time)
+- **Keep it short**: the whole file < 30 lines; large explanations belong in ARCHITECTURE's "Design Decisions" with a reference from handoff
+
 ### CONVENTIONS.md (optional — create only when the project needs cross-cutting tech rules)
 
 ```markdown
@@ -343,18 +439,24 @@ Each convention gets one H2 with a sequential number (C1 / C2 / ...). **The cont
 - ❌ **Don't write tech-stack filler into ARCHITECTURE** (Unity / C# / React / etc.) — unless that fact has architectural meaning
 - ❌ **Don't put project-specific tech conventions into SKILL.md itself** (Unity asmdef templates, specific test-framework syntax, private naming rules, etc.) — those belong in the project's `CONVENTIONS.md`; the skill only standardises the shell
 - ❌ **Don't modify another module's contract/decisions** — only append a request to the other module's CURRENT "External Requests (inbox)" and let the contract owner triage
+- ❌ **Don't proactively create HANDOFF.md** — only when the user explicitly requests it via one of the trigger phrases (otherwise you pollute the dir with bogus handoffs)
+- ❌ **Don't accumulate history in HANDOFF.md** — it's one-shot scene state; past handoffs must be closed (deleted) and absorbed into the other three files
+- ❌ **Don't delete HANDOFF.md without absorbing the info first** — branch E must complete the absorption step or you lose information
 
 ---
 
 ## Expected token cost per invocation
 
 - Startup + pick up existing module: ~700-1000 tokens (INDEX + full ARCHITECTURE + first 40 lines of DEV_LOG + full CURRENT + summary output)
+- Startup + **HANDOFF.md exists**: +150-400 tokens (extra HANDOFF read + extra summary section)
 - Startup + **conditional CONVENTIONS read**: +200-600 tokens (only when creating a foundational sub-module / touching contracts / user says "per project conventions")
 - Startup + new module: ~300 tokens (INDEX + template fill + one-row index update)
 - Status change: ~100 tokens (just modify one INDEX row)
 - Wrap-up: ~150-400 tokens (DEV_LOG prepend + CURRENT local edit; ARCHITECTURE usually skipped)
 - Wrap-up + inbox triage: +50-150 tokens (per request, just edit/delete)
 - Wrap-up + appending a new CONVENTIONS entry: ~300-500 tokens (rare; requires explicit user confirmation)
+- Leave handoff (branch D): ~200-500 tokens (collect + write file + run standard wrap-up)
+- Close handoff (branch E): ~150-400 tokens (read HANDOFF + absorb into 3 files + delete)
 - Archive (rare): ~500 tokens
 
 If you exceed these budgets in practice, stop and check whether you violated a "forbidden behaviour".
