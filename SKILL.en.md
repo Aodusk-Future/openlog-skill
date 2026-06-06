@@ -135,9 +135,9 @@ Then output the **handoff summary** (with an extra section when HANDOFF exists):
 > - Needs review: M items (<list briefly>)
 > - Validation: <one-line summary>
 >
-> When you've picked up the handoff, tell me "handoff done" to close it.
+> **About closing the handoff**: After you pick up the handoff, ANY wrap-up trigger (including "done" / "finished" / `/openlog commit` etc. — any standard wrap-up phrase) will run the wrap-up step-0 pre-check, which proactively asks "should I close the handoff too?" — so you don't have to remember the specific phrase "handoff done"; it won't get silently forgotten.
 
-Then start executing the user's instruction. **Note**: if the user immediately continues the handoff items, you already have the context — go. If the user pivots to something else, **don't** silently delete HANDOFF.md — it stays as a reminder until the user explicitly closes it.
+Then start executing the user's instruction. **Note**: if the user immediately continues the handoff items, you already have the context — go. If the user pivots to something else, **don't** silently delete HANDOFF.md — it stays as a reminder until the next wrap-up triggers step 0's close flow.
 
 #### Branch B: Create a new module
 
@@ -220,6 +220,25 @@ Steps:
 ### Wrap-up steps
 
 Execute in order:
+
+#### 0. Pre-check: Does HANDOFF.md exist? (mandatory, before any other step)
+
+Use Bash `test -f OpenLog/<Module>/HANDOFF.md` to check whether an open handoff exists for the current module.
+
+- **Doesn't exist** → skip this step, go directly to step 1
+- **Exists** → **you must ask the user first**:
+
+  > Detected an open `OpenLog/<Module>/HANDOFF.md`.
+  > Should this wrap-up also close the handoff (absorb HANDOFF content into DEV_LOG / CURRENT / ARCHITECTURE, then delete HANDOFF.md)?
+  > - Yes → I'll run branch E first, then standard wrap-up
+  > - No → I'll only do standard wrap-up, but I'll warn you at the end that the handoff is still open
+
+  User says "yes" → run the full branch E flow first (read HANDOFF → absorb info → delete HANDOFF.md), then **come back here** and continue with steps 1-5. Note: branch E has already distributed info into the three files; the changes from this current task in steps 1-3 may **partially overlap** with what branch E absorbed — merge writes, avoid duplicates.
+
+  User says "no" → continue with steps 1-5, but **append a warning to the final output**:
+  > ⚠️ HANDOFF.md is still open; remember to close it later (just say "handoff done" to run branch E).
+
+**Why this step exists**: "I'm done" / "finished" are the most natural wrap-up phrases users say, but they may ALSO mean "the handoff is done too" — you must ask proactively, never let the handoff get silently forgotten during wrap-up.
 
 #### 1. Prepend a DEV_LOG.md entry (mandatory)
 
