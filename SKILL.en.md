@@ -29,16 +29,11 @@ OpenLog/
 └── <ModuleB>/...
 ```
 
-**Three info layers, distinct semantics** (don't mix):
-- **DEV_LOG.md** = **history** of completed actions (reverse chronological, accumulates)
-- **CURRENT.md** = the module's **long-term stage** (continuous, cross-session)
-- **HANDOFF.md** = the **scene** where the last session stopped (one-shot; file exists = there's a half-finished work waiting; deleted once picked up)
+**Semantics** (don't mix):
+- **Three time scopes**: DEV_LOG = history (persistent) / CURRENT = long-term stage / HANDOFF = end-of-session scene (one-shot, deleted on pickup)
+- **Two convention sets**: INDEX-top "Cross-module collaboration rules" govern inter-module contracts / CONVENTIONS govern intra-module tech practices (optional)
 
 `OpenLog/` follows the project's git repository, so teams / multiple worktrees / different agents share the same journal.
-
-**Two conventions split**:
-- **"Cross-module collaboration rules" at the top of INDEX.md** — govern *how modules interact* (contract ownership, request inbox, etc.) — universal meta-rules.
-- **CONVENTIONS.md** — governs *how to actually build inside a single module* (project-specific tech practices: Unity asmdef templates, unit-test layout, naming, etc.). This is an **optional file**, only created when the project needs to record cross-cutting tech conventions.
 
 ---
 
@@ -72,11 +67,7 @@ Execute in order:
 
 Load the entire module catalogue + the "Cross-module collaboration rules" at the top into context. This is the only "full read" allowed in this phase.
 
-**Conditional read of CONVENTIONS.md**: if INDEX has a pointer to `CONVENTIONS.md` at the top, AND the current task involves any of the following, **also read CONVENTIONS.md** (full read); otherwise skip:
-- Creating a **foundational / shallow-dependency** sub-module (may need the project's assembly / test template)
-- Touching a **cross-module contract** (interface / data shape / naming)
-- The user explicitly says "per the engineering conventions" or "per project standard"
-- The user asks "what's our project convention for X?"
+**Conditional read of CONVENTIONS.md**: read in full only if INDEX has the pointer AND the task involves "creating a foundational sub-module / touching a cross-module contract / user explicitly says 'per project conventions'"; otherwise skip.
 
 ### Step 3: Try **fuzzy module-name matching** (preferred over asking)
 
@@ -135,9 +126,9 @@ Then output the **handoff summary** (with an extra section when HANDOFF exists):
 > - Needs review: M items (<list briefly>)
 > - Validation: <one-line summary>
 >
-> **About closing the handoff**: After you pick up the handoff, ANY wrap-up trigger (including "done" / "finished" / `/openlog commit` etc. — any standard wrap-up phrase) will run the wrap-up step-0 pre-check, which proactively asks "should I close the handoff too?" — so you don't have to remember the specific phrase "handoff done"; it won't get silently forgotten.
+> **Closing handoff**: any wrap-up trigger ("done" / "finished" / `/openlog commit` etc.) runs wrap-up step 0, which proactively asks "should I close the handoff too?" — no need to remember a specific phrase.
 
-Then start executing the user's instruction. **Note**: if the user immediately continues the handoff items, you already have the context — go. If the user pivots to something else, **don't** silently delete HANDOFF.md — it stays as a reminder until the next wrap-up triggers step 0's close flow.
+Then execute the user's instruction. **Important**: if the user pivots to something else, **don't** silently delete HANDOFF.md — the next wrap-up's step 0 handles it.
 
 #### Branch B: Create a new module
 
@@ -221,24 +212,15 @@ Steps:
 
 Execute in order:
 
-#### 0. Pre-check: Does HANDOFF.md exist? (mandatory, before any other step)
+#### 0. Pre-check: HANDOFF.md (mandatory, before any other step)
 
-Use Bash `test -f OpenLog/<Module>/HANDOFF.md` to check whether an open handoff exists for the current module.
+`test -f OpenLog/<Module>/HANDOFF.md`:
+- **Doesn't exist** → skip, go to step 1
+- **Exists** → ask user: "An open HANDOFF.md detected. Close it together with this wrap-up?"
+  - Yes → run branch E in full (read → absorb → delete), then continue steps 1-5; if step 1-3 changes overlap with absorbed content, **merge writes** to avoid duplicates
+  - No → continue steps 1-5, append at end: `⚠️ HANDOFF.md is still open; remember to close it later`
 
-- **Doesn't exist** → skip this step, go directly to step 1
-- **Exists** → **you must ask the user first**:
-
-  > Detected an open `OpenLog/<Module>/HANDOFF.md`.
-  > Should this wrap-up also close the handoff (absorb HANDOFF content into DEV_LOG / CURRENT / ARCHITECTURE, then delete HANDOFF.md)?
-  > - Yes → I'll run branch E first, then standard wrap-up
-  > - No → I'll only do standard wrap-up, but I'll warn you at the end that the handoff is still open
-
-  User says "yes" → run the full branch E flow first (read HANDOFF → absorb info → delete HANDOFF.md), then **come back here** and continue with steps 1-5. Note: branch E has already distributed info into the three files; the changes from this current task in steps 1-3 may **partially overlap** with what branch E absorbed — merge writes, avoid duplicates.
-
-  User says "no" → continue with steps 1-5, but **append a warning to the final output**:
-  > ⚠️ HANDOFF.md is still open; remember to close it later (just say "handoff done" to run branch E).
-
-**Why this step exists**: "I'm done" / "finished" are the most natural wrap-up phrases users say, but they may ALSO mean "the handoff is done too" — you must ask proactively, never let the handoff get silently forgotten during wrap-up.
+**Why this step**: "done" / "finished" are natural wrap-up phrases, but they may also mean "handoff done too" — must ask proactively, never let handoff be silently forgotten.
 
 #### 1. Prepend a DEV_LOG.md entry (mandatory)
 
@@ -410,19 +392,14 @@ Archiving doesn't need to happen on every wrap-up — checking once every ~10 wr
 - <flag for next agent's attention, 1-2 lines>
 ```
 
-**HANDOFF.md discipline**:
-- **One-shot**: a module has at most one open handoff; new writes overwrite the old one (warn first)
-- **Closed on pickup**: branch E deletes the file after absorbing info into DEV_LOG / CURRENT / ARCHITECTURE
-- **Don't accumulate history**: HANDOFF isn't a log; past handoffs are not kept (anything worth keeping should already be absorbed into DEV_LOG at close-time)
-- **Keep it short**: the whole file < 30 lines; large explanations belong in ARCHITECTURE's "Design Decisions" with a reference from handoff
+**HANDOFF discipline**: one-shot (one open per module; new write overwrites — warn first); file < 30 lines; large explanations belong in ARCHITECTURE's "Design Decisions" with a reference from handoff.
 
 ### CONVENTIONS.md (optional — create only when the project needs cross-cutting tech rules)
 
 ```markdown
 # OpenLog Engineering Conventions (cross-cutting)
 
-> Cross-module **engineering practices** (distinct from INDEX's "Cross-module collaboration rules" — those govern inter-module contracts; these govern how to actually build inside a single module).
-> Consult on demand; no need to read every session. Append new conventions here; INDEX only keeps a one-line pointer.
+> Cross-module engineering practices (distinct from INDEX's collaboration rules that govern inter-module contracts). Consult on demand; append new conventions here, INDEX only keeps a one-line pointer.
 
 ---
 
@@ -449,33 +426,28 @@ Each convention gets one H2 with a sequential number (C1 / C2 / ...). **The cont
 
 ## Forbidden behaviours (written down so we don't forget)
 
-- ❌ **Don't re-read the entire DEV_LOG** to "understand history" — the reverse-chronological first 40 lines is the designed boundary
-- ❌ **Don't dump scratch discussions into ARCHITECTURE** — only commit settled interfaces / dependencies / decisions
-- ❌ **Don't let CURRENT exceed 30 lines** — archive or delete (and don't let "External Requests (inbox)" accumulate > 5 unhandled items)
-- ❌ **Don't paste full code diffs into any doc** — use `path/to/file:line` references
-- ❌ **Don't trigger wrap-up unilaterally** — only when the user gives an explicit linguistic signal
-- ❌ **Don't grep the codebase to rebuild module structure** — ARCHITECTURE is the source of truth; if it's stale, update it before acting
-- ❌ **Don't write tech-stack filler into ARCHITECTURE** (Unity / C# / React / etc.) — unless that fact has architectural meaning
-- ❌ **Don't put project-specific tech conventions into SKILL.md itself** (Unity asmdef templates, specific test-framework syntax, private naming rules, etc.) — those belong in the project's `CONVENTIONS.md`; the skill only standardises the shell
-- ❌ **Don't modify another module's contract/decisions** — only append a request to the other module's CURRENT "External Requests (inbox)" and let the contract owner triage
-- ❌ **Don't proactively create HANDOFF.md** — only when the user explicitly requests it via one of the trigger phrases (otherwise you pollute the dir with bogus handoffs)
-- ❌ **Don't accumulate history in HANDOFF.md** — it's one-shot scene state; past handoffs must be closed (deleted) and absorbed into the other three files
-- ❌ **Don't delete HANDOFF.md without absorbing the info first** — branch E must complete the absorption step or you lose information
+**Read limits**:
+- ❌ Don't re-read the entire DEV_LOG (first 40 lines is the boundary); don't grep code to rebuild structure (ARCHITECTURE is source of truth — update it first if stale)
+- ❌ Don't put scratch discussion / tech-stack filler (Unity / React / asmdef templates etc.) into ARCHITECTURE or SKILL.md — the former pollutes architecture, the latter pollutes the distributable skill; project-specific conventions belong in `CONVENTIONS.md`
+
+**Write limits**:
+- ❌ Don't trigger wrap-up or create HANDOFF proactively — both require explicit user phrasing; same goes for modifying others' contracts (file requests via their inbox instead)
+- ❌ CURRENT ≤ 30 lines; inbox ≤ 5 unhandled items; no full code diffs in any doc (use `path:line` references)
+
+**HANDOFF discipline**:
+- ❌ HANDOFF is one-shot scene state; past ones must be closed (deleted); deletion without absorption = data loss (branch E step 2 must precede step 3)
 
 ---
 
 ## Expected token cost per invocation
 
-- Startup + pick up existing module: ~700-1000 tokens (INDEX + full ARCHITECTURE + first 40 lines of DEV_LOG + full CURRENT + summary output)
-- Startup + **HANDOFF.md exists**: +150-400 tokens (extra HANDOFF read + extra summary section)
-- Startup + **conditional CONVENTIONS read**: +200-600 tokens (only when creating a foundational sub-module / touching contracts / user says "per project conventions")
-- Startup + new module: ~300 tokens (INDEX + template fill + one-row index update)
-- Status change: ~100 tokens (just modify one INDEX row)
-- Wrap-up: ~150-400 tokens (DEV_LOG prepend + CURRENT local edit; ARCHITECTURE usually skipped)
-- Wrap-up + inbox triage: +50-150 tokens (per request, just edit/delete)
-- Wrap-up + appending a new CONVENTIONS entry: ~300-500 tokens (rare; requires explicit user confirmation)
-- Leave handoff (branch D): ~200-500 tokens (collect + write file + run standard wrap-up)
-- Close handoff (branch E): ~150-400 tokens (read HANDOFF + absorb into 3 files + delete)
-- Archive (rare): ~500 tokens
+| Operation | Baseline | Increment (when triggered) |
+|-----------|----------|---------------------------|
+| Pick up existing module | 700-1000 | +150-400 (HANDOFF) / +200-600 (conditional CONVENTIONS) |
+| New module | 300 | — |
+| Status change | 100 | — |
+| Standard wrap-up | 150-400 | +50-150 (inbox triage) / +300-500 (append CONVENTIONS, rare) |
+| Leave / close handoff | 200-500 | — |
+| Archive (rare) | 500 | — |
 
 If you exceed these budgets in practice, stop and check whether you violated a "forbidden behaviour".
