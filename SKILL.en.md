@@ -11,6 +11,11 @@ OpenLog is a lightweight "per-module development journal" mechanism. It pins eac
 
 **Core goal**: stable, replayable, low-token.
 
+> **Tool legend (cross-agent portable)**: tool names below are Claude Code's; substitute equivalents in other agents (Codex etc.)—
+> - `AskUserQuestion` = any "offer options, let the user pick" capability; **if absent, just ask in plain text**
+> - `Read ... limit: N` = a file reader's "first N lines only" capability; **if unsupported, use `head -N <file>`**
+> - `test -f` / `stat` / `wc` / `date` etc. = standard shell commands, universal to any Bash-capable agent
+
 ---
 
 ## Data layout (project root)
@@ -235,6 +240,11 @@ Insert at the **top** of the file (right after the `# <Module> Dev Log` title):
 
 Use local time (e.g. `date "+%Y-%m-%d %H:%M"`). Keep summary ≤ 60 chars.
 
+**Where to log a cross-module change** (when one task touched files in multiple modules):
+- Pick the **primary module** (the task's originating / main module) for the full DEV_LOG entry
+- Other affected modules: **leave a one-line reference only** in their DEV_LOG (e.g. `- YYYY-MM-DD affected by Combat change, see Combat DEV_LOG same-day entry`), don't copy the full text
+- Avoid double-booking the same change across multiple DEV_LOGs — the reference is the single source, the primary entry is canonical
+
 **Concurrency note**: if the project uses git with remote collaborators, remind the user: "When multiple worktrees / agents are active, run `git pull --rebase` before writing to avoid conflicts in OpenLog/." Don't auto-pull — let the user decide.
 
 #### 2. Update CURRENT.md (mandatory)
@@ -331,6 +341,14 @@ Archiving doesn't need to happen on every wrap-up — checking once every ~10 wr
 # <Module> Dev Log
 
 (Newest entries on top. Each entry 3-5 lines.)
+```
+
+**Review-entry convention** (dual-agent cross-review / code review): prefix review entries with `[review]`, and record three things in the body—*what was reviewed / verdict / what changed*. Example:
+```markdown
+## 2026-06-11 10:30 — [review] Phase 7 AOE target filter
+- Reviewed: TargetingResolver's AOE filter layer
+- Verdict: uninitialized occupants with entityData==null get included, null-ref at resolution
+- Changed: `TargetingResolver.cs:118` filters out invalid occupants
 ```
 
 ### CURRENT.md

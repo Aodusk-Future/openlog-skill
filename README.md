@@ -30,14 +30,30 @@ git clone https://github.com/Aodusk-Future/openlog-skill ~/.claude/skills/openlo
 git clone https://github.com/Aodusk-Future/openlog-skill ~/.codex/skills/openlog
 ```
 
-Using both tools? Clone once to `~/openlog-skill/`, then symlink to both locations so future updates stay in sync automatically:
+Using both tools? Clone once to `~/openlog-skill/`, then wire up each client. **Note the asymmetry** (learned the hard way): Claude Code follows symlinks, but Codex does **not** reliably — give Codex a physical copy.
 
 ```bash
 git clone https://github.com/Aodusk-Future/openlog-skill ~/openlog-skill
 mkdir -p ~/.claude/skills/openlog ~/.codex/skills/openlog
+
+# Claude Code: symlink — auto-tracks the source
 ln -s ~/openlog-skill/SKILL.md ~/.claude/skills/openlog/SKILL.md
-ln -s ~/openlog-skill/SKILL.md ~/.codex/skills/openlog/SKILL.md
+
+# Codex: physical copy — re-copy after each update
+cp ~/openlog-skill/SKILL.md ~/.codex/skills/openlog/SKILL.md
 ```
+
+To keep the Codex copy in sync automatically, add a git post-commit hook in `~/openlog-skill/`:
+
+```bash
+cat > ~/openlog-skill/.git/hooks/post-commit <<'EOF'
+#!/bin/sh
+cp "$(git rev-parse --show-toplevel)/SKILL.md" ~/.codex/skills/openlog/SKILL.md 2>/dev/null
+EOF
+chmod +x ~/openlog-skill/.git/hooks/post-commit
+```
+
+> **Codex caveat**: skills are scanned at startup. After updating SKILL.md, **fully quit and reopen Codex** (⌘Q, not just closing the window) for it to re-scan. Claude Code picks up symlinked changes on its next session automatically.
 
 Then in any Claude Code or Codex session, type:
 
@@ -122,14 +138,30 @@ git clone https://github.com/Aodusk-Future/openlog-skill ~/.claude/skills/openlo
 git clone https://github.com/Aodusk-Future/openlog-skill ~/.codex/skills/openlog
 ```
 
-**两个工具都用**？建议 clone 一份到 `~/openlog-skill/`,然后用 symlink 链到两个位置,以后更新只需 `git pull` 一次：
+**两个工具都用**？建议 clone 一份到 `~/openlog-skill/`,再分别接上两个客户端。**注意非对称**（踩坑总结）：Claude Code 跟随 symlink,但 Codex **不可靠**——给 Codex 物理副本。
 
 ```bash
 git clone https://github.com/Aodusk-Future/openlog-skill ~/openlog-skill
 mkdir -p ~/.claude/skills/openlog ~/.codex/skills/openlog
+
+# Claude Code：symlink——自动跟随源
 ln -s ~/openlog-skill/SKILL.md ~/.claude/skills/openlog/SKILL.md
-ln -s ~/openlog-skill/SKILL.md ~/.codex/skills/openlog/SKILL.md
+
+# Codex：物理副本——每次更新后重新 cp
+cp ~/openlog-skill/SKILL.md ~/.codex/skills/openlog/SKILL.md
 ```
+
+想让 Codex 副本自动同步,在 `~/openlog-skill/` 加一个 git post-commit hook：
+
+```bash
+cat > ~/openlog-skill/.git/hooks/post-commit <<'EOF'
+#!/bin/sh
+cp "$(git rev-parse --show-toplevel)/SKILL.md" ~/.codex/skills/openlog/SKILL.md 2>/dev/null
+EOF
+chmod +x ~/openlog-skill/.git/hooks/post-commit
+```
+
+> **Codex 注意**：skill 在启动时扫描。更新 SKILL.md 后需**完全退出并重开 Codex**（⌘Q,不只是关窗口）才会重新扫描。Claude Code 下次会话自动读取 symlink 变更。
 
 之后在任何 Claude Code 或 Codex 会话里输入：
 
